@@ -1,4 +1,8 @@
 # in this module we initialize the hamiltonian and related parts
+import numpy as np 
+import numpy as cp
+from scipy.linalg import expm
+
 
 def make_hopping(n_x, n_y, periodic_x, periodic_y, tunneling):
     hopping_matrix = np.zeros((n_y * n_x, n_y * n_x))
@@ -47,11 +51,11 @@ def cluster(h,Bk,sign_U_interact):
  
  
 def init_trotter(Beta,N_time,U_eff,H0):
-    T_hop = np.concatenate(([1/2], np.ones(N_time-1), [1/2])) * (Beta / N_time)
-    U_interact = U_eff * np.ones(N_time+1)
+    T_hop = np.concatenate(([1/2], np.ones(N_time-2), [1/2])) * (Beta / N_time)
+    U_interact = U_eff * np.ones(N_time)
     sign_U_interact = np.array(np.sign(U_interact))
-    T_u = np.concatenate(([1], np.ones(N_time - 1), [0])) * (Beta / N_time)
-    H0_array = np.array([H0 for i in range(N_time+1)])
+    T_u = np.concatenate(([1], np.ones(N_time - 2), [0])) * (Beta / N_time)
+    H0_array = np.array([H0 for i in range(N_time)])
     lamda = np.arccosh(np.exp(np.abs(U_interact)*T_u/2))
     probability = cp.array(np.exp(-(1 - np.sign(U_interact)) * lamda))
     gamma1 = cp.array(np.exp(-2*lamda)-1)

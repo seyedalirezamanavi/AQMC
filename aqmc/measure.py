@@ -1,5 +1,5 @@
 # measures go here
-
+import cupy as cp
 
 def correlation(GF_up_tmp, GF_dn_tmp, sz_tmp, rho_tmp, n_up_tmp, n_dn_tmp, N_x, N_y):
     corr_z_list = 0

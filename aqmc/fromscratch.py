@@ -1,13 +1,17 @@
 #in this module we emplement methods to calculate the Greens function
 #from scratch, using G = (I + B_l... B_1)^(-1)
 
+import numpy as cp
+
+eps = 10**(-15)
+
 def from_scratch(cl,n_qr):
     Q,D,T = QR_prime(cl, n_qr)
     G = invers(Q, D, T)
     return G 
 
 
-def QR(z,I):
+def QR(z, I):
     Q = I
     D = cp.diag(I)
     T = I
@@ -16,7 +20,7 @@ def QR(z,I):
         A = (z[len(z) - i - 1]).dot(Q*D)
         Q, R = cp.linalg.qr(A)
         D = cp.diag(R)
-        T_prime = R / D[:,None]
+        T_prime = R / (D[:,None]+eps)
         T = T_prime.dot(T)
  
     return Q, D, T
@@ -44,8 +48,8 @@ def QR_prime(z, n):
 def invers(Q, D, T):
     D_p = cp.where(cp.abs(D)>1,1,D)
     D_m = cp.where(cp.abs(D)<1,1,D)
-    A1 = cp.conj(Q.T)/D_p[:,None] + D_m[:,None]*T
-    A2 = 1/D_p
+    A1 = cp.conj(Q.T)/(D_p[:,None]+eps) + D_m[:,None]*T
+    A2 = 1/(D_p+eps)
     A3 = cp.conj(Q.T)
     g = (cp.linalg.inv(A1)*A2).dot(A3)
     
