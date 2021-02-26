@@ -1,6 +1,7 @@
 # this function is to set aqmc parameters and run the method
 from initializing import make_hopping, init_trotter, expmk, cluster
 from fromscratch import from_scratch
+from update import time_wrap, update_G
 import numpy as np
 import numpy as cp
 
@@ -83,10 +84,26 @@ class AQMC:
         rho_mar = cp.zeros((self.N_markov,self.X_dimension))
         sign_partition_accu = cp.array([cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])[0] for i in range(self.N_markov)],dtype=cp.int32)[:,None]
         return hs_m
+    
+    def pin_memory(self):
+        memory_pool = cp.cuda.MemoryPool()
+        cp.cuda.set_allocator(memory_pool.malloc)
+        pinned_memory_pool = cp.cuda.PinnedMemoryPool()
+        cp.cuda.set_pinned_memory_allocator(pinned_memory_pool.malloc)
         
     def run(self):
         self.initialize()
-        
+        for msr in range(self.N_sw_measure+self.N_warm_up):
+            for l in range(self.N_time):
+                for i,stream in zip(mark_list,map_streams):
+                    with stream:                
+                        randomlist = cp.random.random(size=(self.N_s))
+                        
+                        update_G((1,),(1,),(cp.eye(self.N_s),cp.eye(self.N_s),G_up_m[i],  G_dn_m[i], hs_m[i], randomlist, self.N_s, self.N_time, sign_partition_accu[i], probability_m[i], gamma1_m[i], gamma2_m[i],self.BLOCKSIZE))
+                        G_up_m[i], G_dn_m[i], Bk_m[i], Bk_inv_m[i], hs_m[i], cl_up_m[i], cl_dn_m[i], sign_U_interact_m[i],probability_m[i], gamma1_m[i], gamma2_m[i] = time_wrap(G_up_m[i], G_dn_m[i], Bk_m[i], Bk_inv_m[i], hs_m[i], cl_up_m[i], cl_dn_m[i], sign_U_interact_m[i],probability_m[i], gamma1_m[i], gamma2_m[i])
+                        if l%N_from_scratch == 0:
+                            G_up_m[i] = from_scratch(cl_up_m[i],self.N_qr)
+                            G_dn_m[i] = from_scratch(cl_dn_m[i],self.N_qr)
         
 params = {
 "N_sw_measure" : 10,
