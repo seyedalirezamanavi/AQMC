@@ -2,8 +2,11 @@
 from initializing import make_hopping, init_trotter, expmk, cluster
 from fromscratch import from_scratch
 from update import time_wrap, update_G
+from measure import expectation_values
+
 import numpy as np
 import numpy as cp
+
 
 class AQMC:
     def __init__(self, **params):
@@ -104,7 +107,99 @@ class AQMC:
                         if l%N_from_scratch == 0:
                             G_up_m[i] = from_scratch(cl_up_m[i],self.N_qr)
                             G_dn_m[i] = from_scratch(cl_dn_m[i],self.N_qr)
+                        if msr >= N_warm_up and l==N_time-1:
+                            G_up_m[i] = cp.eye(N_s) - G_up_m[i]
+                            G_dn_m[i] = cp.eye(N_s) - G_dn_m[i]
+                            G_up_mar[i] += (G_up_m[i])*sign_partition_accu[i,0]
+                            G_dn_mar[i] += (G_dn_m[i])*sign_partition_accu[i,0]
+                            n_up_tmp = cp.diag(G_up_m[i])
+                            n_dn_tmp = cp.diag(G_dn_m[i])
+                            sz_tmp = (n_up_tmp-n_dn_tmp)/2
+                            rho_tmp = (n_up_tmp+n_dn_tmp)/2
+                            interaction_mar[i] +=  cp.sum(n_up_tmp * n_dn_tmp * U)*sign_partition_accu[i,0]
+                            szsz,sxsx,rho = correlation(G_up_m[i], G_dn_m[i], sz_tmp, rho_tmp, n_up_tmp, n_dn_tmp, X_dimension, Y_dimension)
+                            szsz_mar[i] += szsz*sign_partition_accu[i,0]
+                            sxsx_mar[i] += sxsx*sign_partition_accu[i,0]
+                            rho_mar[i] += rho*sign_partition_accu[i,0]
+                            sign_mar[i] += sign_partition_accu[i,0]
+                            N_measure[i] += 1
         
+        N_msr = cp.mean(N_measure,axis=0)
+        sign_msr = sign_mar/N_msr
+
+
+        G_up_msr = cp.array([G_up_mar[i]/(N_msr*sign_msr[i]) for i in range(N_markov)])
+        G_dn_msr = cp.array([G_dn_mar[i]/(N_msr*sign_msr[i]) for i in range(N_markov)])
+        interaction_msr = cp.array([interaction_mar[i]/(N_msr*sign_msr[i]) for i in range(N_markov)])
+
+        G_msr = G_up_msr+G_dn_msr
+            
+        kin = cp.array([cp.trace(cp.array(H_0_msr).dot(cp.eye(N_s)-G_msr[i]))/N_s for i in range(N_markov)])
+        intr = cp.array([interaction_msr[i]/N_s for i in range(N_markov)])
+        filling = np.trace(2*cp.eye(N_s) - cp.mean(G_msr,axis=0))/N_s
+        mean_onsite_corr = cp.mean(cp.array([interaction_mar[i]/(U*cp.mean(1-cp.diag(G_up_mar[i])*cp.mean(1-cp.diag(G_dn_mar[i])))) for i in range(N_markov)]),axis=0)
+        totenrgy = kin + intr
+        err = 100*cp.std(totenrgy,axis=0)/cp.abs(cp.mean(totenrgy,axis=0))
+        energy_mean = cp.mean(totenrgy,axis=0)
+
+        
+
+
+        
+        szsz_msr = cp.array([szsz_mar[i,:]/(N_msr*sign_msr[i]) for i in range(N_markov)])
+        sxsx_msr = cp.array([sxsx_mar[i,:]/(N_msr*sign_msr[i]) for i in range(N_markov)])
+        rho_msr = cp.array([rho_mar[i,:]/(N_msr*sign_msr[i]) for i in range(N_markov)])
+        
+        sign_msr = cp.mean(cp.abs(sign_msr),axis=0)
+
+        measures = {"elpsd_time":end-strt,
+                    "kinetic_energy_mean":cp.mean(kin),
+                    "interaction_energy_mean":cp.mean(intr),
+                    "n_mean":filling,
+                    "mean_onsite_corr":mean_onsite_corr,
+                    "energy_mean":energy_mean,
+                    "err_bar":err,
+                    "sign_mean":sign_msr,
+                    "markov_data":{
+                        "G_up_mar":G_up_mar,
+                        "G_dn_mar":G_dn_mar,
+                        "N_msr":N_msr,
+                        "sign_mar":sign_mar,
+                        "interaction_mar":interaction_mar,
+                        "correlations":{
+                            "szsz_mar":szsz_mar,
+                            "sxsx_mar":sxsx_mar,
+                            "rho_mar":rho_mar
+                        }
+                                },
+                    "model_params":{
+                        "N_sw_measure" : N_sw_measure,
+                        "N_warm_up" : N_sw_measure // 5,
+                        "N_from_scratch" : N_from_scratch,
+                        "N_qr" : N_qr,
+                        "N_markov" : N_markov,
+                        "chemical_potential" : chemical_potential,
+                        "U" : U,
+                        "tunneling" : tunneling,
+                        "periodic_Y" : periodic_Y,
+                        "periodic_X" : periodic_X,
+                        "X_dimension" : X_dimension,
+                        "Y_dimension" : Y_dimension,
+                        "N_s" : X_dimension * Y_dimension,
+                        "N_time" : N_time,
+                        "Beta" : Beta,                    
+                    }
+                    }
+                        
+        
+        
+        # pp = pprint.PrettyPrinter(depth=1)
+        # pp.pprint(measures)
+
+        print(" time: {}s\n kinetic_energy_mean: {}\n interaction_energy_mean: {}\n n_mean: {}\n mean_onsite_corr: {}\n energy_mean: {}\n err_bar: {}\n sign_mean: {}".format(end-strt,cp.mean(kin),cp.mean(intr),filling,mean_onsite_corr,energy_mean,err,sign_msr))
+        plt.plot(cp.asnumpy(szsz_msr[0]))
+        return measure
+    
 params = {
 "N_sw_measure" : 10,
 "N_warm_up" : 10 // 5,
