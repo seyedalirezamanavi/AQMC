@@ -29,7 +29,7 @@ class AQMC:
         self.Beta = params["Beta"]
         self.N_time = params["N_time"]
         self.U_eff =  self.U
-    
+        self.directory = params["directory"]
         if self.N_s<32:
             self.BLOCKSIZE = self.N_s
         else:
@@ -92,7 +92,7 @@ class AQMC:
         sxsx_mar = cp.zeros((self.N_markov,self.X_dimension))
         rho_mar = cp.zeros((self.N_markov,self.X_dimension))
         sign_partition_accu = cp.array([cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])[0] for i in range(self.N_markov)],dtype=cp.int32)[:,None]
-        
+        HS_list = cp.empty((200, self.N_markov, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
         # mark_list, map_streams = self.initialize()
         for msr in range(self.N_sw_measure+self.N_warm_up):
             for l in range(self.N_time):
@@ -120,7 +120,11 @@ class AQMC:
                             sxsx_mar[i] += sxsx*sign_partition_accu[i,0]
                             rho_mar[i] += rho*sign_partition_accu[i,0]
                             sign_mar[i] += sign_partition_accu[i,0]
+                            HS_list[N_measure[i],i,:,:] = hs_m[i]
                             N_measure[i] += 1
+                            if N_measure[i] % 200 == 0:
+                                cp.savez_compressed(self.directory+str(time.time())+".npz",hs = HS_list)
+                                HS_list = cp.empty((200, self.N_markov, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
         
         N_msr = cp.mean(N_measure,axis=0)
         sign_msr = sign_mar/N_msr
@@ -213,7 +217,8 @@ params = {
 "Y_dimension" : 8,
 "N_s" : 16*8,
 "N_time" : 100,
-"Beta" : 4,                    
+"Beta" : 4,         
+"directory":""
 }
 
 a = AQMC(**params)

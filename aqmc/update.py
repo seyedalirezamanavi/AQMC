@@ -53,7 +53,7 @@ __global__ void update_G(double* G_upp, double* G_dnp,double* G_up, double* G_dn
         int NUMGRID = N_s/BLOCKSIZE;
         dim3 block(BLOCKSIZE,BLOCKSIZE);
         dim3 grid(NUMGRID,NUMGRID);
-        //#pragma unroll
+        #pragma unroll
         for(int i=0;i<N_s;i++)
         {
             if (hs[N_s*(N_t-1)+i] > 0){
