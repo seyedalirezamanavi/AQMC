@@ -1,7 +1,7 @@
 #in this module we emplement methods to calculate the Greens function
 #from scratch, using G = (I + B_l... B_1)^(-1)
 
-import numpy as cp
+import cupy as cp
 
 eps = 10**(-15)
 

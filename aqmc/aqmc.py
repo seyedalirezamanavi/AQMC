@@ -3,6 +3,7 @@ from initializing import make_hopping, init_trotter, expmk, cluster
 from fromscratch import from_scratch
 from update import time_wrap, update_G
 from measure import correlation
+from varHS import save_hs
 
 import numpy as np
 import cupy as cp
@@ -34,7 +35,7 @@ class AQMC:
             self.BLOCKSIZE = self.N_s
         else:
             self.BLOCKSIZE = 32
-    
+        
     def pin_memory(self):
         memory_pool = cp.cuda.MemoryPool()
         cp.cuda.set_allocator(memory_pool.malloc)
@@ -64,7 +65,8 @@ class AQMC:
         gamma1_m = cp.empty((self.N_markov,self.N_time))
         gamma2_m = cp.empty((self.N_markov,self.N_time))
 
-
+        hs_cached = 200
+        
         map_streams = []
         mark_list = []
         for i in range(self.N_markov):
@@ -92,7 +94,8 @@ class AQMC:
         sxsx_mar = cp.zeros((self.N_markov,self.X_dimension))
         rho_mar = cp.zeros((self.N_markov,self.X_dimension))
         sign_partition_accu = cp.array([cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])[0] for i in range(self.N_markov)],dtype=cp.int32)[:,None]
-        HS_list = cp.empty((200, self.N_markov, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
+        HS_list = cp.empty((hs_cached, self.N_markov, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
+        P_list = cp.empty((hs_cached, ))
         # mark_list, map_streams = self.initialize()
         for msr in range(self.N_sw_measure+self.N_warm_up):
             for l in range(self.N_time):
@@ -105,6 +108,7 @@ class AQMC:
                         if l%self.N_from_scratch == 0:
                             G_up_m[i] = from_scratch(cl_up_m[i],self.N_qr)
                             G_dn_m[i] = from_scratch(cl_dn_m[i],self.N_qr)
+                            
                         if msr >= self.N_warm_up and l==self.N_time-1:
                             G_up_m[i] = cp.eye(self.N_s) - G_up_m[i]
                             G_dn_m[i] = cp.eye(self.N_s) - G_dn_m[i]
@@ -121,10 +125,11 @@ class AQMC:
                             rho_mar[i] += rho*sign_partition_accu[i,0]
                             sign_mar[i] += sign_partition_accu[i,0]
                             HS_list[N_measure[i],i,:,:] = hs_m[i]
+                            P_list[N_measure[i]] = cp.linalg.det(G_up_m[i].dot(G_dn_m[i]))
                             N_measure[i] += 1
-                            if N_measure[i] % 200 == 0:
-                                cp.savez_compressed(self.directory+str(time.time())+".npz",hs = HS_list)
-                                HS_list = cp.empty((200, self.N_markov, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
+                            if N_measure[i] % hs_cached == 0:
+                                P_list, HS_list = save_hs(P_list, HS_list, self.directory)
+                                
         
         N_msr = cp.mean(N_measure,axis=0)
         sign_msr = sign_mar/N_msr
@@ -201,6 +206,12 @@ class AQMC:
         print(" time: s\n kinetic_energy_mean: {}\n interaction_energy_mean: {}\n n_mean: {}\n mean_onsite_corr: {}\n energy_mean: {}\n err_bar: {}\n sign_mean: {}".format(cp.mean(kin),cp.mean(intr),filling,mean_onsite_corr,energy_mean,err,sign_msr))
         plt.plot(cp.asnumpy(szsz_msr[0]))
         # return measure
+    
+    def save_hs(self, p, hs, directory):
+        cp.savez_compressed(directory+str(time.time())+".npz", hs = hs, p = p)
+        return cp.empty_like(p), cp.empty_like(hs) #keep in mind the size of the array be smaller than the DRAM
+    
+    #def calc_operator(self, )
     
 params = {
 "N_sw_measure" : 10,
