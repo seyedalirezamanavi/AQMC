@@ -8,6 +8,7 @@ from varHS import save_hs
 import numpy as np
 import cupy as cp
 import matplotlib.pyplot as plt
+import time
 
 class AQMC:
     def __init__(self, **params):
@@ -97,6 +98,7 @@ class AQMC:
         HS_list = cp.empty((hs_cached, self.N_markov, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
         P_list = cp.empty((hs_cached, ))
         # mark_list, map_streams = self.initialize()
+        strt = time.time()
         for msr in range(self.N_sw_measure+self.N_warm_up):
             for l in range(self.N_time):
                 for i,stream in zip(mark_list,map_streams):
@@ -130,7 +132,7 @@ class AQMC:
                             if N_measure[i] % hs_cached == 0:
                                 P_list, HS_list = save_hs(P_list, HS_list, self.directory)
                                 
-        
+        end = time.time()
         N_msr = cp.mean(N_measure,axis=0)
         sign_msr = sign_mar/N_msr
 
@@ -159,53 +161,49 @@ class AQMC:
         
         sign_msr = cp.mean(cp.abs(sign_msr),axis=0)
 
-        # measures = {"elpsd_time":end-strt,
-        #             "kinetic_energy_mean":cp.mean(kin),
-        #             "interaction_energy_mean":cp.mean(intr),
-        #             "n_mean":filling,
-        #             "mean_onsite_corr":mean_onsite_corr,
-        #             "energy_mean":energy_mean,
-        #             "err_bar":err,
-        #             "sign_mean":sign_msr,
-        #             "markov_data":{
-        #                 "G_up_mar":G_up_mar,
-        #                 "G_dn_mar":G_dn_mar,
-        #                 "N_msr":N_msr,
-        #                 "sign_mar":sign_mar,
-        #                 "interaction_mar":interaction_mar,
-        #                 "correlations":{
-        #                     "szsz_mar":szsz_mar,
-        #                     "sxsx_mar":sxsx_mar,
-        #                     "rho_mar":rho_mar
-        #                 }
-        #                         },
-        #             "model_params":{
-        #                 "N_sw_measure" : N_sw_measure,
-        #                 "N_warm_up" : N_sw_measure // 5,
-        #                 "N_from_scratch" : N_from_scratch,
-        #                 "N_qr" : N_qr,
-        #                 "N_markov" : N_markov,
-        #                 "chemical_potential" : chemical_potential,
-        #                 "U" : U,
-        #                 "tunneling" : tunneling,
-        #                 "periodic_Y" : periodic_Y,
-        #                 "periodic_X" : periodic_X,
-        #                 "X_dimension" : X_dimension,
-        #                 "Y_dimension" : Y_dimension,
-        #                 "N_s" : X_dimension * Y_dimension,
-        #                 "N_time" : N_time,
-        #                 "Beta" : Beta,                    
-        #             }
-        #             }
-                        
-        
-        
-        # pp = pprint.PrettyPrinter(depth=1)
-        # pp.pprint(measures)
+        measures = {"elpsd_time":end-strt,
+                    "kinetic_energy_mean":cp.mean(kin),
+                    "interaction_energy_mean":cp.mean(intr),
+                    "n_mean":filling,
+                    "mean_onsite_corr":mean_onsite_corr,
+                    "energy_mean":energy_mean,
+                    "err_bar":err,
+                    "sign_mean":sign_msr,
+                    "markov_data":{
+                        "G_up_mar":G_up_mar,
+                        "G_dn_mar":G_dn_mar,
+                        "N_msr":N_msr,
+                        "sign_mar":sign_mar,
+                        "interaction_mar":interaction_mar,
+                        "correlations":{
+                            "szsz_mar":szsz_mar,
+                            "sxsx_mar":sxsx_mar,
+                            "rho_mar":rho_mar
+                        }
+                                },
+                    "model_params":{
+                        "N_sw_measure" : self.N_sw_measure,
+                        "N_warm_up" : self.N_sw_measure // 5,
+                        "N_from_scratch" : self.N_from_scratch,
+                        "N_qr" : self.N_qr,
+                        "N_markov" : self.N_markov,
+                        "chemical_potential" : self.chemical_potential,
+                        "U" : self.U,
+                        "tunneling" : self.tunneling,
+                        "periodic_Y" : self.periodic_Y,
+                        "periodic_X" : self.periodic_X,
+                        "X_dimension" : self.X_dimension,
+                        "Y_dimension" : self.Y_dimension,
+                        "N_s" : self.X_dimension * self.Y_dimension,
+                        "N_time" : self.N_time,
+                        "Beta" : self.Beta,    
+                        "directory": self.directory,
+                    }
+                    }
 
-        print(" time: s\n kinetic_energy_mean: {}\n interaction_energy_mean: {}\n n_mean: {}\n mean_onsite_corr: {}\n energy_mean: {}\n err_bar: {}\n sign_mean: {}".format(cp.mean(kin),cp.mean(intr),filling,mean_onsite_corr,energy_mean,err,sign_msr))
+        print(" time: {}s\n kinetic_energy_mean: {}\n interaction_energy_mean: {}\n n_mean: {}\n mean_onsite_corr: {}\n energy_mean: {}\n err_bar: {}\n sign_mean: {}".format(end - strt,cp.mean(kin),cp.mean(intr),filling,mean_onsite_corr,energy_mean,err,sign_msr))
         plt.plot(cp.asnumpy(szsz_msr[0]))
-        # return measure
+        return measure
     
     def save_hs(self, p, hs, directory):
         cp.savez_compressed(directory+str(time.time())+".npz", hs = hs, p = p)
