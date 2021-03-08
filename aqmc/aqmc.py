@@ -96,7 +96,8 @@ class AQMC:
         rho_mar = cp.zeros((self.N_markov,self.X_dimension))
         sign_partition_accu = cp.array([cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])[0] for i in range(self.N_markov)],dtype=cp.int32)[:,None]
         HS_list = cp.empty((hs_cached, self.N_markov, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
-        P_list = cp.empty((hs_cached, ))
+        P_list = cp.empty((hs_cached, )) #keep in mind the size of the array be smaller than the DRAM
+        sign_list = cp.empty((hs_cached, )) #keep in mind the size of the array be smaller than the DRAM
         # mark_list, map_streams = self.initialize()
         strt = time.time()
         for msr in range(self.N_sw_measure+self.N_warm_up):
@@ -127,10 +128,14 @@ class AQMC:
                             rho_mar[i] += rho*sign_partition_accu[i,0]
                             sign_mar[i] += sign_partition_accu[i,0]
                             HS_list[N_measure[i],i,:,:] = hs_m[i]
-                            P_list[N_measure[i]] = cp.linalg.det(G_up_m[i].dot(G_dn_m[i]))
+                            si, logP = cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])
+                            P_list[N_measure[i]] = cp.exp(logP)
+                            sign_list[N_measure[i]] = si 
                             N_measure[i] += 1
                             if N_measure[i] % hs_cached == 0:
-                                P_list, HS_list = save_hs(P_list, HS_list, self.directory)
+                                
+                                HS_list, P_list, sign_list = save_hs(HS_list,  P_list, sign_list, self.directory)
+                                
                                 
         end = time.time()
         N_msr = cp.mean(N_measure,axis=0)
@@ -205,12 +210,51 @@ class AQMC:
         plt.plot(cp.asnumpy(szsz_msr[0]))
         return measure
     
-    def save_hs(self, p, hs, directory):
-        cp.savez_compressed(directory+str(time.time())+".npz", hs = hs, p = p)
-        return cp.empty_like(p), cp.empty_like(hs) #keep in mind the size of the array be smaller than the DRAM
+    def save_hs(self, hs, sign, p, directory):
+        cp.savez_compressed(directory+str(time.time())+".npz", hs = hs, sign = sign, p = p)
+        return cp.empty_like(hs) #keep in mind the size of the array be smaller than the DRAM
     
-    #def calc_operator(self, )
+    def load_hs(directory):
     
+        data = cp.load(directory)
+        hs = data["hs"]
+        sign = data["sign"]
+        p = data["p"]
+        return hs, sign, p
+
+    def calc_var_green(directory, params):
+        
+        H_0 = make_hopping(self.X_dimension, self.Y_dimension, self.periodic_X, self.periodic_Y, self.tunneling)
+        H_0 += np.identity(self.X_dimension * self.Y_dimension) * ((-1) * self.chemical_potential)
+
+        sign_U_interact, T_hop, H0_array, _, _, _, _ = init_trotter(self.Beta,self.N_time,self.U_eff,H_0)
+        Bk, Bk_inv = expmk(H0_array, T_hop)
+        
+        hs_m, sign_m, p_m = load_hs(directory)
+        
+        G_up_m = cp.zeros((self.N_s, self.N_s))
+        G_dn_m = cp.zeros((self.N_s, self.N_s))
+                
+        for hs, sign, p in zip(hs_m, sign_m, p_m):
+        
+            cl_up, cl_dn = cluster(hs,Bk,sign_U_interact)
+            
+            G_up = from_scratch(cl_up, self.N_qr)
+            G_dn = from_scratch(cl_dn, self.N_qr)
+            
+            signp, log_pp = cp.linalg.slogdet(G_up + G_dn)
+            
+            G_up = cp.eye(self.N_s) - G_up
+            G_dn = cp.eye(self.N_s) - G_dn
+            
+            G_up_m += G_up * (signp * pp)/(sign * p)
+            G_dn_m += G_dn * (signp * pp)/(sign * p)
+            
+            n_up_tmp = cp.diag(G_up_m)
+            n_dn_tmp = cp.diag(G_dn_m)
+            sz_tmp = (n_up_tmp-n_dn_tmp)/2
+            rho_tmp = (n_up_tmp+n_dn_tmp)/2
+        
 params = {
 "N_sw_measure" : 10,
 "N_warm_up" : 10 // 5,
