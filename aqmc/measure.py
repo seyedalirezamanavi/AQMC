@@ -33,3 +33,22 @@ def correlation(GF_up_tmp, GF_dn_tmp, sz_tmp, rho_tmp, n_up_tmp, n_dn_tmp, N_x, 
     rho_correlation = rho_list/N_s
 
     return szsz_correlation,sxsx_correlation,rho_correlation
+
+#def expectaion_values(G_up, G_dn, sign_partition_accu, N_s, X_dimension, Y_dimension):
+    #G_up_m = cp.eye(N_s) - G_up
+    #G_dn_m = cp.eye(N_s) - G_dn
+    #G_up_mar += (G_up_m)*sign_partition_accu
+    #G_dn_mar += (G_dn_m)*sign_partition_accu
+    #n_up_tmp = cp.diag(G_up_m)
+    #n_dn_tmp = cp.diag(G_dn_m)
+    #sz_tmp = (n_up_tmp-n_dn_tmp)/2
+    #rho_tmp = (n_up_tmp+n_dn_tmp)/2
+    #interaction_mar += cp.sum(n_up_tmp * n_dn_tmp * U)*sign_partition_accu
+    #szsz,sxsx,rho = correlation(G_up_m, G_dn_m, sz_tmp, rho_tmp, n_up_tmp, n_dn_tmp, X_dimension, Y_dimension)
+    #szsz_mar += szsz*sign_partition_accu
+    #sxsx_mar += sxsx*sign_partition_accu
+    #rho_mar += rho*sign_partition_accu
+    #sign_mar += sign_partition_accu
+    #N_measure += 1
+    
+    #return G_up_mar, G_dn_mar, interaction_mar, szsz_mar, sxsx_mar, rho_mar, sign_mar, N_measure
