@@ -63,6 +63,34 @@ def init_trotter(Beta,N_time,U_eff,H0):
     return cp.array(sign_U_interact), T_hop, H0_array, cp.array(lamda), probability, gamma1, gamma2
  
  
+
+
+def init_trotter_proj(Beta, N_time, U_eff, H0, switch_proj, N_electorn, Beta_proj, N_time_proj):
+    T_hop = np.concatenate((np.ones(N_time) * (Beta / N_time), np.ones(N_time_proj) * (Beta_proj / N_time_proj),
+                            np.ones(N_time) * (Beta / N_time)))
+
+    U_interact = np.concatenate((U_eff * np.ones(N_time), 0 * np.ones(N_time_proj - 1), U_eff * np.ones(N_time), [0]))
+    sign_U_interact = np.array(np.sign(U_interact))
+
+    T_u = np.ones(N_time + N_time_proj + N_time) * (Beta / N_time)
+
+    H0_array = np.array([H0 for i in range((N_time + N_time_proj + N_time)]))
+
+    val, vec = np.linalg.eigh(H0)
+    val[:] = 1
+    val[:N_electron] = -1
+    H_proj = (vec.dot(np.diag(val))).dot(np.conjugate(vec.T))
+
+    H0_array[N_time:N_time + N_time_proj] = H_proj
+
+    lamda = np.arccosh(np.exp(np.abs(U_interact) * T_u / 2))
+    probability = cp.array(np.exp(-(1 - np.sign(U_interact)) * lamda))
+    gamma1 = cp.array(np.exp(-2 * lamda) - 1)
+    gamma2 = cp.array(np.exp(2 * lamda * sign_U_interact) - 1)
+
+    return cp.array(sign_U_interact), T_hop, H0_array, cp.array(lamda), probability, gamma1, gamma2
+
+
 def expmk(H0_array, T_hop): #cpu
     Bk = []
     Bk_inv = []
