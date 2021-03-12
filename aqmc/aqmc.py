@@ -211,7 +211,7 @@ class AQMC:
     
     def save_hs(self, hs, p, sign, directory):
         cp.savez_compressed(directory+str(time.time())+".npz", hs = hs, sign = sign, p = p)
-        return cp.empty_like(hs), cp.empty_like(p), cp.empty_like(sign) #keep in mind the size of the array be smaller than the DRAM
+        return cp.empty((1, self.N_time, self.N_s)), cp.empty((1,)), cp.empty((1,)) #keep in mind the size of the array be smaller than the DRAM
     
     def load_hs(directory):
     
