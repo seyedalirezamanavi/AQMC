@@ -1,6 +1,6 @@
 # in this module we initialize the hamiltonian and related parts
 import numpy as np 
-import numpy as cp
+import cupy as cp
 from scipy.linalg import expm
 
 

@@ -3,7 +3,6 @@ from initializing import make_hopping, init_trotter, expmk, cluster
 from fromscratch import from_scratch
 from update import time_wrap, update_G
 from measure import correlation
-from varHS import save_hs
 
 import numpy as np
 import cupy as cp
@@ -99,6 +98,7 @@ class AQMC:
         P_list = cp.empty((hs_cached, )) #keep in mind the size of the array be smaller than the DRAM
         sign_list = cp.empty((hs_cached, )) #keep in mind the size of the array be smaller than the DRAM
         # mark_list, map_streams = self.initialize()
+        save_index = 0
         strt = time.time()
         for msr in range(self.N_sw_measure+self.N_warm_up):
             for l in range(self.N_time):
@@ -127,16 +127,17 @@ class AQMC:
                             sxsx_mar[i] += sxsx*sign_partition_accu[i,0]
                             rho_mar[i] += rho*sign_partition_accu[i,0]
                             sign_mar[i] += sign_partition_accu[i,0]
-                            HS_list[N_measure[i],i,:,:] = hs_m[i]
+                            HS_list[save_index,i,:,:] = hs_m[i]
                             si, logP = cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])
-                            P_list[N_measure[i]] = cp.exp(logP)
-                            sign_list[N_measure[i]] = si 
+                            P_list[save_index] = cp.exp(logP)
+                            sign_list[save_index] = si 
                             N_measure[i] += 1
                             if N_measure[i] % hs_cached == 0:
                                 
-                                HS_list, P_list, sign_list = save_hs(HS_list,  P_list, sign_list, self.directory)
+                                HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)
+                                save_index = 0
                                 
-                                
+        HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)                        
         end = time.time()
         N_msr = cp.mean(N_measure,axis=0)
         sign_msr = sign_mar/N_msr
@@ -208,11 +209,11 @@ class AQMC:
 
         print(" time: {}s\n kinetic_energy_mean: {}\n interaction_energy_mean: {}\n n_mean: {}\n mean_onsite_corr: {}\n energy_mean: {}\n err_bar: {}\n sign_mean: {}".format(end - strt,cp.mean(kin),cp.mean(intr),filling,mean_onsite_corr,energy_mean,err,sign_msr))
         plt.plot(cp.asnumpy(szsz_msr[0]))
-        return measure
+        return measures
     
-    def save_hs(self, hs, sign, p, directory):
+    def save_hs(self, hs, p, sign, directory):
         cp.savez_compressed(directory+str(time.time())+".npz", hs = hs, sign = sign, p = p)
-        return cp.empty_like(hs) #keep in mind the size of the array be smaller than the DRAM
+        return cp.empty_like(hs), cp.empty_like(p), cp.empty_like(sign) #keep in mind the size of the array be smaller than the DRAM
     
     def load_hs(directory):
     
