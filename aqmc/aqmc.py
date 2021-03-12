@@ -127,12 +127,12 @@ class AQMC:
                             rho_mar[i] += rho*sign_partition_accu[i,0]
                             sign_mar[i] += sign_partition_accu[i,0]
                             N_measure[i] += 1
-            HS_list = cp.concatenate(HS_list, hs_m)
+            HS_list = cp.concatenate([HS_list, hs_m])
             si, logP = cp.linalg.slogdet(G_up_m+G_dn_m)
-            P_list = cp.concatenate(P_list, cp.exp(logP))
-            sign_list =cp.concatenate(sign_list, si)
+            P_list = cp.concatenate([P_list, cp.exp(logP)])
+            sign_list =cp.concatenate([sign_list, si])
             
-            if msr >= self.N_warm_up or (msr+1) % hs_cached == 0:
+            if msr >= self.N_warm_up and (msr+1) % hs_cached == 0:
                 HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)
                                 
         HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)                        
@@ -147,10 +147,10 @@ class AQMC:
 
         G_msr = G_up_msr+G_dn_msr
             
-        kin = cp.array([cp.trace(cp.array(H_0_msr).dot(cp.eye(self.N_s)-G_msr[i]))/self.N_s for i in range(self.N_markov)])
+        kin = cp.array([cp.trace(cp.array(H_0_msr).dot(G_msr[i]))/self.N_s for i in range(self.N_markov)])
         intr = cp.array([interaction_msr[i]/self.N_s for i in range(self.N_markov)])
-        filling = np.trace(2*cp.eye(self.N_s) - cp.mean(G_msr,axis=0))/self.N_s
-        mean_onsite_corr = cp.mean(cp.array([interaction_mar[i]/(self.U*cp.mean(1-cp.diag(G_up_mar[i])*cp.mean(1-cp.diag(G_dn_mar[i])))) for i in range(self.N_markov)]),axis=0)
+        filling = np.trace(cp.mean(G_msr,axis=0))/self.N_s
+        mean_onsite_corr = cp.mean(cp.array([interaction_mar[i]/(self.U*cp.mean(cp.diag(G_up_mar[i])*cp.mean(cp.diag(G_dn_mar[i])))) for i in range(self.N_markov)]),axis=0)
         totenrgy = kin + intr
         err = 100*cp.std(totenrgy,axis=0)/cp.abs(cp.mean(totenrgy,axis=0))
         energy_mean = cp.mean(totenrgy,axis=0)
@@ -210,7 +210,7 @@ class AQMC:
         return measures
     
     def save_hs(self, hs, p, sign, directory):
-        cp.savez_compressed(directory+str(time.time())+".npz", hs = hs, sign = sign, p = p)
+        cp.savez_compressed(directory+str(int(time.time()))+".npz", hs = hs, sign = sign, p = p)
         return cp.empty((1, self.N_time, self.N_s)), cp.empty((1,)), cp.empty((1,)) #keep in mind the size of the array be smaller than the DRAM
     
     def load_hs(directory):
