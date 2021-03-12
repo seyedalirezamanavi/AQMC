@@ -65,7 +65,7 @@ class AQMC:
         gamma1_m = cp.empty((self.N_markov,self.N_time))
         gamma2_m = cp.empty((self.N_markov,self.N_time))
 
-        hs_cached = 200
+        hs_cached = self.N_markov * 1000 
         
         map_streams = []
         mark_list = []
@@ -94,11 +94,10 @@ class AQMC:
         sxsx_mar = cp.zeros((self.N_markov,self.X_dimension))
         rho_mar = cp.zeros((self.N_markov,self.X_dimension))
         sign_partition_accu = cp.array([cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])[0] for i in range(self.N_markov)],dtype=cp.int32)[:,None]
-        HS_list = cp.empty((hs_cached, self.N_markov, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
-        P_list = cp.empty((hs_cached, )) #keep in mind the size of the array be smaller than the DRAM
-        sign_list = cp.empty((hs_cached, )) #keep in mind the size of the array be smaller than the DRAM
+        HS_list = cp.empty((1, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
+        P_list = cp.empty((1, )) #keep in mind the size of the array be smaller than the DRAM
+        sign_list = cp.empty((1, )) #keep in mind the size of the array be smaller than the DRAM
         # mark_list, map_streams = self.initialize()
-        save_index = 0
         strt = time.time()
         for msr in range(self.N_sw_measure+self.N_warm_up):
             for l in range(self.N_time):
@@ -127,15 +126,14 @@ class AQMC:
                             sxsx_mar[i] += sxsx*sign_partition_accu[i,0]
                             rho_mar[i] += rho*sign_partition_accu[i,0]
                             sign_mar[i] += sign_partition_accu[i,0]
-                            HS_list[save_index,i,:,:] = hs_m[i]
-                            si, logP = cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])
-                            P_list[save_index] = cp.exp(logP)
-                            sign_list[save_index] = si 
                             N_measure[i] += 1
-                            if N_measure[i] % hs_cached == 0:
-                                
-                                HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)
-                                save_index = 0
+            HS_list = cp.concatenate(HS_list, hs_m)
+            si, logP = cp.linalg.slogdet(G_up_m+G_dn_m)
+            P_list = cp.concatenate(P_list, cp.exp(logP))
+            sign_list =cp.concatenate(sign_list, si)
+            
+            if msr >= self.N_warm_up or (msr+1) % hs_cached == 0:
+                HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)
                                 
         HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)                        
         end = time.time()
