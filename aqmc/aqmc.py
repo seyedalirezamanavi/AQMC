@@ -128,9 +128,9 @@ class AQMC:
                             sign_mar[i] += sign_partition_accu[i,0]
                             N_measure[i] += 1
             HS_list = cp.concatenate([HS_list, hs_m])
-            si, logP = cp.linalg.slogdet(G_up_m+G_dn_m)
+            si, logP = cp.linalg.slogdet(cp.matmul(G_up_m,G_dn_m))
             P_list = cp.concatenate([P_list, cp.exp(logP)])
-            sign_list =cp.concatenate([sign_list, si])
+            sign_list =cp.concatenate([sign_list, sign_partition_accu[:,0]])
             
             if msr >= self.N_warm_up and (msr+1) % hs_cached == 0:
                 HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)
@@ -213,7 +213,7 @@ class AQMC:
         cp.savez_compressed(directory+str(int(time.time()))+".npz", hs = hs, sign = sign, p = p)
         return cp.empty((1, self.N_time, self.N_s)), cp.empty((1,)), cp.empty((1,)) #keep in mind the size of the array be smaller than the DRAM
     
-    def load_hs(directory):
+    def load_hs(self, directory):
     
         data = cp.load(directory)
         hs = data["hs"]
@@ -221,7 +221,7 @@ class AQMC:
         p = data["p"]
         return hs, sign, p
 
-    def calc_var_green(directory, params):
+    def calc_var_green(self, directory, params):
         
         H_0 = make_hopping(self.X_dimension, self.Y_dimension, self.periodic_X, self.periodic_Y, self.tunneling)
         H_0 += np.identity(self.X_dimension * self.Y_dimension) * ((-1) * self.chemical_potential)
