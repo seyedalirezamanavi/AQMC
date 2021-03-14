@@ -95,8 +95,6 @@ class AQMC:
         rho_mar = cp.zeros((self.N_markov,self.X_dimension))
         sign_partition_accu = cp.array([cp.linalg.slogdet(G_up_m[i] @ G_dn_m[i])[0] for i in range(self.N_markov)],dtype=cp.int32)[:,None]
         HS_list = cp.empty((1, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
-        logP_list = cp.empty((1, )) #keep in mind the size of the array be smaller than the DRAM
-        sign_list = cp.empty((1, )) #keep in mind the size of the array be smaller than the DRAM
         # mark_list, map_streams = self.initialize()
         strt = time.time()
         for msr in range(self.N_sw_measure+self.N_warm_up):
@@ -128,17 +126,11 @@ class AQMC:
                             sign_mar[i] += sign_partition_accu[i,0]
                             N_measure[i] += 1
             HS_list = cp.concatenate([HS_list, hs_m])
-            si_up, logP_up = cp.linalg.slogdet(G_up_m)
-            si_dn, logP_dn = cp.linalg.slogdet(G_dn_m)
-            si = si_up * si_dn
-            logP = logP_up + logP_dn
-            logP_list = cp.concatenate([logP_list, logP])
-            sign_list =cp.concatenate([sign_list, si])
             
             if msr >= self.N_warm_up and (msr+1) % hs_cached == 0:
-                HS_list, logP_list, sign_list = self.save_hs(HS_list,  logP_list, sign_list, self.directory)
+                HS_list, = self.save_hs(HS_list, self.directory)
                                 
-        HS_list, logP_list, sign_list = self.save_hs(HS_list,  logP_list, sign_list, self.directory)                        
+        HS_list = self.save_hs(HS_list, self.directory)                        
         end = time.time()
         N_msr = cp.mean(N_measure,axis=0)
         sign_msr = sign_mar/N_msr
@@ -212,46 +204,63 @@ class AQMC:
         plt.plot(cp.asnumpy(szsz_msr[0]))
         return measures
     
-    def save_hs(self, hs, log_p, sign, directory):
-        cp.savez_compressed(directory+str(int(time.time()))+".npz", hs = hs, sign = sign, log_p = log_p)
-        return cp.empty((1, self.N_time, self.N_s)), cp.empty((1,)), cp.empty((1,)) #keep in mind the size of the array be smaller than the DRAM
+    def save_hs(self, hs, directory):
+        cp.savez_compressed(directory+str(int(time.time()))+".npz", hs = hs)
+        return cp.empty((1, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
     
     def load_hs(self, directory):
     
         data = cp.load(directory)
         hs = data["hs"][1:]
-        sign = data["sign"][1:]
-        log_p = data["log_p"][1:]
-        return hs, sign, log_p
 
-    def calc_var_green(self, directory, params):
+        return hs
+
+    def calc_var_green(self, directory, paramsjson, paramspjson):
+        params = AQMC(**paramsjson)
+        paramsp = AQMC(**paramspjson)
+        hs_m = self.load_hs(directory)
+
+        H_0 = make_hopping(params.X_dimension, params.Y_dimension, params.periodic_X, params.periodic_Y, params.tunneling)
+        H_0 += np.identity(params.X_dimension * params.Y_dimension) * ((-1) * params.chemical_potential)
         
-        H_0 = make_hopping(self.X_dimension, self.Y_dimension, self.periodic_X, self.periodic_Y, self.tunneling)
-        H_0 += np.identity(self.X_dimension * self.Y_dimension) * ((-1) * self.chemical_potential)
-        
-        sign_U_interact, T_hop, H0_array, _, _, _, _ = init_trotter(self.Beta,self.N_time,self.U_eff,H_0)
+        sign_U_interact, T_hop, H0_array, _, _, _, _ = init_trotter(params.Beta,params.N_time,params.U_eff,H_0)
         Bk, Bk_inv = expmk(H0_array, T_hop)
+                
+        G_up_m = cp.zeros((params.N_s, params.N_s))
+        G_dn_m = cp.zeros((params.N_s, params.N_s))
+
+
+        H_0 = make_hopping(paramsp.X_dimension, paramsp.Y_dimension, paramsp.periodic_X, paramsp.periodic_Y, paramsp.tunneling)
+        H_0 += np.identity(paramsp.X_dimension * paramsp.Y_dimension) * ((-1) * paramsp.chemical_potential)
         
-        hs_m, sign_m, log_p_m = self.load_hs(directory)
-        
-        G_up_m = cp.zeros((self.N_s, self.N_s))
-        G_dn_m = cp.zeros((self.N_s, self.N_s))
+        sign_U_interactp, T_hop, H0_array, _, _, _, _ = init_trotter(paramsp.Beta,paramsp.N_time,paramsp.U_eff,H_0)
+        Bkp, Bk_inv = expmk(H0_array, T_hop)
+                
+        G_up_m = cp.zeros((paramsp.N_s, paramsp.N_s))
+        G_dn_m = cp.zeros((paramsp.N_s, paramsp.N_s))
+ 
         pl = 0     
-        for hs, sign, log_p in zip(hs_m, sign_m, log_p_m):
-        
+        for hs in hs_m:
             cl_up, cl_dn = cluster(hs,Bk.copy(),sign_U_interact)
             
-            G_up = from_scratch(cl_up, self.N_qr)
-            G_dn = from_scratch(cl_dn, self.N_qr)
-            
-            # G_up = cp.eye(self.N_s) - G_up
-            # G_dn = cp.eye(self.N_s) - G_dn
+            G_up = from_scratch(cl_up, params.N_qr)
+            G_dn = from_scratch(cl_dn, params.N_qr)
 
-            signp_up, log_pp_up = cp.linalg.slogdet(G_up)
-            signp_dn, log_pp_dn = cp.linalg.slogdet(G_dn)
+            cl_up, cl_dn = cluster(hs,Bkp.copy(),sign_U_interactp)
+            
+            G_upp = from_scratch(cl_up, params.N_qr)
+            G_dnp = from_scratch(cl_dn, params.N_qr)
+
+            signp_up, log_pp_up = cp.linalg.slogdet(G_upp)
+            signp_dn, log_pp_dn = cp.linalg.slogdet(G_dnp)
             signp = signp_dn * signp_up
             log_pp = log_pp_up + log_pp_dn
             
+            sign_up, log_p_up = cp.linalg.slogdet(G_up)
+            sign_dn, log_p_dn = cp.linalg.slogdet(G_dn)
+            sign = sign_dn * sign_up
+            log_p = log_p_up + log_p_dn
+
             G_up_m += G_up * (signp / sign) * cp.exp(log_pp - log_p)
             G_dn_m += G_dn * (signp / sign) * cp.exp(log_pp - log_p)
             print((signp / sign) , log_pp ,log_p)
@@ -282,5 +291,23 @@ params = {
 "directory":""
 }
 
+paramsp = {
+"N_sw_measure" : 10,
+"N_warm_up" : 10 // 5,
+"N_from_scratch" : 10,
+"N_qr" : 10,
+"N_markov" : 2,
+"chemical_potential" : 0.2,
+"U" : 4.2,
+"tunneling" : 1,
+"periodic_Y" : 1,
+"periodic_X" : 1,
+"X_dimension" : 16,
+"Y_dimension" : 8,
+"N_s" : 16*8,
+"N_time" : 100,
+"Beta" : 4,         
+"directory":""
+}
 
 a = AQMC(**params)
