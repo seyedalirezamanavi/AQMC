@@ -95,7 +95,7 @@ class AQMC:
         rho_mar = cp.zeros((self.N_markov,self.X_dimension))
         sign_partition_accu = cp.array([cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])[0] for i in range(self.N_markov)],dtype=cp.int32)[:,None]
         HS_list = cp.empty((1, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
-        P_list = cp.empty((1, )) #keep in mind the size of the array be smaller than the DRAM
+        logP_list = cp.empty((1, )) #keep in mind the size of the array be smaller than the DRAM
         sign_list = cp.empty((1, )) #keep in mind the size of the array be smaller than the DRAM
         # mark_list, map_streams = self.initialize()
         strt = time.time()
@@ -128,14 +128,17 @@ class AQMC:
                             sign_mar[i] += sign_partition_accu[i,0]
                             N_measure[i] += 1
             HS_list = cp.concatenate([HS_list, hs_m])
-            si, logP = cp.linalg.slogdet(cp.matmul(G_up_m,G_dn_m))
-            P_list = cp.concatenate([P_list, cp.exp(logP)])
-            sign_list =cp.concatenate([sign_list, sign_partition_accu[:,0]])
+            si_up, logP_up = cp.linalg.slogdet(G_up_m)
+            si_dn, logP_dn = cp.linalg.slogdet(G_dn_m)
+            si = si_up * si_dn
+            logP = logP_up + logP_dn
+            logP_list = cp.concatenate([logP_list, logP])
+            sign_list =cp.concatenate([sign_list, si])
             
             if msr >= self.N_warm_up and (msr+1) % hs_cached == 0:
-                HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)
+                HS_list, logP_list, sign_list = self.save_hs(HS_list,  logP_list, sign_list, self.directory)
                                 
-        HS_list, P_list, sign_list = self.save_hs(HS_list,  P_list, sign_list, self.directory)                        
+        HS_list, logP_list, sign_list = self.save_hs(HS_list,  logP_list, sign_list, self.directory)                        
         end = time.time()
         N_msr = cp.mean(N_measure,axis=0)
         sign_msr = sign_mar/N_msr
