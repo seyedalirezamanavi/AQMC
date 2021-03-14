@@ -212,51 +212,55 @@ class AQMC:
         plt.plot(cp.asnumpy(szsz_msr[0]))
         return measures
     
-    def save_hs(self, hs, p, sign, directory):
-        cp.savez_compressed(directory+str(int(time.time()))+".npz", hs = hs, sign = sign, p = p)
+    def save_hs(self, hs, log_p, sign, directory):
+        cp.savez_compressed(directory+str(int(time.time()))+".npz", hs = hs, sign = sign, log_p = log_p)
         return cp.empty((1, self.N_time, self.N_s)), cp.empty((1,)), cp.empty((1,)) #keep in mind the size of the array be smaller than the DRAM
     
     def load_hs(self, directory):
     
         data = cp.load(directory)
-        hs = data["hs"]
-        sign = data["sign"]
-        p = data["p"]
-        return hs, sign, p
+        hs = data["hs"][1:]
+        sign = data["sign"][1:]
+        log_p = data["log_p"][1:]
+        return hs, sign, log_p
 
     def calc_var_green(self, directory, params):
         
         H_0 = make_hopping(self.X_dimension, self.Y_dimension, self.periodic_X, self.periodic_Y, self.tunneling)
         H_0 += np.identity(self.X_dimension * self.Y_dimension) * ((-1) * self.chemical_potential)
-
+        
         sign_U_interact, T_hop, H0_array, _, _, _, _ = init_trotter(self.Beta,self.N_time,self.U_eff,H_0)
         Bk, Bk_inv = expmk(H0_array, T_hop)
         
-        hs_m, sign_m, p_m = load_hs(directory)
+        hs_m, sign_m, log_p_m = self.load_hs(directory)
         
         G_up_m = cp.zeros((self.N_s, self.N_s))
         G_dn_m = cp.zeros((self.N_s, self.N_s))
                 
-        for hs, sign, p in zip(hs_m, sign_m, p_m):
+        for hs, sign, log_p in zip(hs_m, sign_m, log_p_m):
         
             cl_up, cl_dn = cluster(hs,Bk,sign_U_interact)
             
             G_up = from_scratch(cl_up, self.N_qr)
             G_dn = from_scratch(cl_dn, self.N_qr)
             
-            signp, log_pp = cp.linalg.slogdet(G_up + G_dn)
-            
+            signp_up, log_pp_up = cp.linalg.slogdet(G_up)
+            signp_dn, log_pp_dn = cp.linalg.slogdet(G_dn)
+            signp = signp_dn * signp_up
+            log_pp = log_pp_up + log_pp_dn
+
             G_up = cp.eye(self.N_s) - G_up
             G_dn = cp.eye(self.N_s) - G_dn
             
-            G_up_m += G_up * (signp * pp)/(sign * p)
-            G_dn_m += G_dn * (signp * pp)/(sign * p)
+            G_up_m += G_up * (signp / sign) * cp.exp(log_pp - log_p)
+            G_dn_m += G_dn * (signp / sign) * cp.exp(log_pp - log_p)
             
             n_up_tmp = cp.diag(G_up_m)
             n_dn_tmp = cp.diag(G_dn_m)
             sz_tmp = (n_up_tmp-n_dn_tmp)/2
             rho_tmp = (n_up_tmp+n_dn_tmp)/2
-        
+
+            return n_up_tmp, n_dn_tmp
 params = {
 "N_sw_measure" : 10,
 "N_warm_up" : 10 // 5,
