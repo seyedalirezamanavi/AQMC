@@ -93,7 +93,7 @@ class AQMC:
         szsz_mar = cp.zeros((self.N_markov,self.X_dimension))
         sxsx_mar = cp.zeros((self.N_markov,self.X_dimension))
         rho_mar = cp.zeros((self.N_markov,self.X_dimension))
-        sign_partition_accu = cp.array([cp.linalg.slogdet(G_up_m[i]+G_dn_m[i])[0] for i in range(self.N_markov)],dtype=cp.int32)[:,None]
+        sign_partition_accu = cp.array([cp.linalg.slogdet(G_up_m[i] @ G_dn_m[i])[0] for i in range(self.N_markov)],dtype=cp.int32)[:,None]
         HS_list = cp.empty((1, self.N_time, self.N_s)) #keep in mind the size of the array be smaller than the DRAM
         logP_list = cp.empty((1, )) #keep in mind the size of the array be smaller than the DRAM
         sign_list = cp.empty((1, )) #keep in mind the size of the array be smaller than the DRAM
@@ -112,16 +112,16 @@ class AQMC:
                             G_dn_m[i] = from_scratch(cl_dn_m[i],self.N_qr)
                             
                         if msr >= self.N_warm_up and l==self.N_time-1:
-                            G_up_m[i] = cp.eye(self.N_s) - G_up_m[i]
-                            G_dn_m[i] = cp.eye(self.N_s) - G_dn_m[i]
-                            G_up_mar[i] += (G_up_m[i])*sign_partition_accu[i,0]
-                            G_dn_mar[i] += (G_dn_m[i])*sign_partition_accu[i,0]
-                            n_up_tmp = cp.diag(G_up_m[i])
-                            n_dn_tmp = cp.diag(G_dn_m[i])
+                            G_up_ms = cp.eye(self.N_s) - G_up_m[i]
+                            G_dn_ms = cp.eye(self.N_s) - G_dn_m[i]
+                            G_up_mar[i] += (G_up_ms)*sign_partition_accu[i,0]
+                            G_dn_mar[i] += (G_dn_ms)*sign_partition_accu[i,0]
+                            n_up_tmp = cp.diag(G_up_ms)
+                            n_dn_tmp = cp.diag(G_dn_ms)
                             sz_tmp = (n_up_tmp-n_dn_tmp)/2
                             rho_tmp = (n_up_tmp+n_dn_tmp)/2
                             interaction_mar[i] +=  cp.sum(n_up_tmp * n_dn_tmp * self.U)*sign_partition_accu[i,0]
-                            szsz,sxsx,rho = correlation(G_up_m[i], G_dn_m[i], sz_tmp, rho_tmp, n_up_tmp, n_dn_tmp, self.X_dimension, self.Y_dimension)
+                            szsz,sxsx,rho = correlation(G_up_ms, G_dn_ms, sz_tmp, rho_tmp, n_up_tmp, n_dn_tmp, self.X_dimension, self.Y_dimension)
                             szsz_mar[i] += szsz*sign_partition_accu[i,0]
                             sxsx_mar[i] += sxsx*sign_partition_accu[i,0]
                             rho_mar[i] += rho*sign_partition_accu[i,0]
@@ -236,31 +236,33 @@ class AQMC:
         
         G_up_m = cp.zeros((self.N_s, self.N_s))
         G_dn_m = cp.zeros((self.N_s, self.N_s))
-                
+        pl = 0     
         for hs, sign, log_p in zip(hs_m, sign_m, log_p_m):
         
-            cl_up, cl_dn = cluster(hs,Bk,sign_U_interact)
+            cl_up, cl_dn = cluster(hs,Bk.copy(),sign_U_interact)
             
             G_up = from_scratch(cl_up, self.N_qr)
             G_dn = from_scratch(cl_dn, self.N_qr)
             
+            # G_up = cp.eye(self.N_s) - G_up
+            # G_dn = cp.eye(self.N_s) - G_dn
+
             signp_up, log_pp_up = cp.linalg.slogdet(G_up)
             signp_dn, log_pp_dn = cp.linalg.slogdet(G_dn)
             signp = signp_dn * signp_up
             log_pp = log_pp_up + log_pp_dn
-
-            G_up = cp.eye(self.N_s) - G_up
-            G_dn = cp.eye(self.N_s) - G_dn
             
             G_up_m += G_up * (signp / sign) * cp.exp(log_pp - log_p)
             G_dn_m += G_dn * (signp / sign) * cp.exp(log_pp - log_p)
-            
-            n_up_tmp = cp.diag(G_up_m)
-            n_dn_tmp = cp.diag(G_dn_m)
+            print((signp / sign) , log_pp ,log_p)
+            pl += cp.exp(log_pp - log_p)
+
+            n_up_tmp = cp.diag(G_up)
+            n_dn_tmp = cp.diag(G_dn)
             sz_tmp = (n_up_tmp-n_dn_tmp)/2
             rho_tmp = (n_up_tmp+n_dn_tmp)/2
 
-            return n_up_tmp, n_dn_tmp
+        return G_dn_m/pl
 params = {
 "N_sw_measure" : 10,
 "N_warm_up" : 10 // 5,
