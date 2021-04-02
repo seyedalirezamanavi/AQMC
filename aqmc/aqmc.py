@@ -202,7 +202,7 @@ class AQMC:
 
         print(" time: {}s\n kinetic_energy_mean: {}\n interaction_energy_mean: {}\n n_mean: {}\n mean_onsite_corr: {}\n energy_mean: {}\n err_bar: {}\n sign_mean: {}".format(end - strt,cp.mean(kin),cp.mean(intr),filling,mean_onsite_corr,energy_mean,err,sign_msr))
         plt.plot(cp.asnumpy(szsz_msr[0]))
-        return measures
+        return measures,
     
     def save_hs(self, hs, directory):
         cp.savez_compressed(directory+str(int(time.time()))+".npz", hs = hs)
@@ -236,20 +236,20 @@ class AQMC:
         sign_U_interactp, T_hop, H0_array, _, _, _, _ = init_trotter(paramsp.Beta,paramsp.N_time,paramsp.U_eff,H_0)
         Bkp, Bk_inv = expmk(H0_array, T_hop)
                 
-        G_up_m = cp.zeros((paramsp.N_s, paramsp.N_s))
-        G_dn_m = cp.zeros((paramsp.N_s, paramsp.N_s))
+        G_up_p = cp.zeros((paramsp.N_s, paramsp.N_s))
+        G_dn_p = cp.zeros((paramsp.N_s, paramsp.N_s))
  
         pl = 0     
         for hs in hs_m:
-            cl_up, cl_dn = cluster(hs,Bk.copy(),sign_U_interact)
+            cl_up, cl_dn = cluster(hs.copy(),Bk.copy(),sign_U_interact)
             
             G_up = from_scratch(cl_up, params.N_qr)
             G_dn = from_scratch(cl_dn, params.N_qr)
-
-            cl_up, cl_dn = cluster(hs,Bkp.copy(),sign_U_interactp)
+            print(cp.sum(cl_dn),cp.sum(G_up))
+            clp_up, clp_dn = cluster(hs.copy(),Bkp.copy(),sign_U_interactp)
             
-            G_upp = from_scratch(cl_up, params.N_qr)
-            G_dnp = from_scratch(cl_dn, params.N_qr)
+            G_upp = from_scratch(clp_up, paramsp.N_qr)
+            G_dnp = from_scratch(clp_dn, paramsp.N_qr)
 
             signp_up, log_pp_up = cp.linalg.slogdet(G_upp)
             signp_dn, log_pp_dn = cp.linalg.slogdet(G_dnp)
@@ -261,17 +261,22 @@ class AQMC:
             sign = sign_dn * sign_up
             log_p = log_p_up + log_p_dn
 
-            G_up_m += G_up * (signp / sign) * cp.exp(log_pp - log_p)
-            G_dn_m += G_dn * (signp / sign) * cp.exp(log_pp - log_p)
-            print((signp / sign) , log_pp ,log_p)
+            G_up_m += G_up * sign
+            G_dn_m += G_dn * sign
+
+            G_up_p += G_up * (signp / sign) * cp.exp(log_pp - log_p)
+            G_dn_p += G_dn * (signp / sign) * cp.exp(log_pp - log_p)
+
+
+            print((signp / sign) , log_pp ,log_p,cp.trace(G_dn_p),cp.sum(G_dn_p))
             pl += cp.exp(log_pp - log_p)
 
-            n_up_tmp = cp.diag(G_up)
-            n_dn_tmp = cp.diag(G_dn)
-            sz_tmp = (n_up_tmp-n_dn_tmp)/2
-            rho_tmp = (n_up_tmp+n_dn_tmp)/2
+            # n_up_tmp = cp.diag(G_up)
+            # n_dn_tmp = cp.diag(G_dn)
+            # sz_tmp = (n_up_tmp-n_dn_tmp)/2
+            # rho_tmp = (n_up_tmp+n_dn_tmp)/2
 
-        return G_dn_m/pl
+        return 1-cp.trace(G_up_p)/(pl*self.N_s),1-cp.trace(G_dn_p)/(pl*self.N_s),1-cp.trace(G_up_m)/(len(hs_m)*self.N_s),1-cp.trace(G_dn_m)/(len(hs_m)*self.N_s),
 params = {
 "N_sw_measure" : 10,
 "N_warm_up" : 10 // 5,
@@ -298,7 +303,7 @@ paramsp = {
 "N_qr" : 10,
 "N_markov" : 2,
 "chemical_potential" : 0.2,
-"U" : 4.2,
+"U" : 4,
 "tunneling" : 1,
 "periodic_Y" : 1,
 "periodic_X" : 1,
