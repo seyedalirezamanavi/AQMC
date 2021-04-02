@@ -3,7 +3,9 @@ from initializing import make_hopping, init_trotter, expmk, cluster
 from fromscratch import from_scratch
 from update import time_wrap, update_G
 from measure import correlation
-from varHS import save_hs
+from initializing import init_trotter_proj
+
+# from varHS import save_hs
 
 import numpy as np
 import cupy as cp
@@ -50,10 +52,12 @@ class AQMC:
         H_0 += np.identity(self.X_dimension * self.Y_dimension) * ((-1) * self.chemical_potential)
     
         I = cp.array(1)
-        sign_U_interact, T_hop, H0_array, lamda, probability, gamma1, gamma2 = init_trotter(self.Beta,self.N_time,self.U_eff,H_0)
+        # sign_U_interact, T_hop, H0_array, lamda, probability, gamma1, gamma2 = init_trotter(self.Beta,self.N_time,self.U_eff,H_0)
+        sign_U_interact, T_hop, H0_array, lamda, probability, gamma1, gamma2 = init_trotter_proj(self.Beta, self.N_time, self.U_eff, H_0, 1, 64 , 10, 3)
         Bk, Bk_inv = expmk(H0_array, T_hop)
         
-
+        self.N_time += 3
+        
         sign_U_interact_m = cp.empty((self.N_markov,self.N_time))
         hs_m = cp.empty((self.N_markov,self.N_time,self.N_s))
         cl_up_m = cp.empty((self.N_markov,self.N_time,self.N_s,self.N_s))
@@ -73,6 +77,7 @@ class AQMC:
         for i in range(self.N_markov):
             mark_list.append(i)
             map_streams.append(cp.cuda.stream.Stream())
+            print(sign_U_interact.shape,sign_U_interact_m[i].shape)
             sign_U_interact_m[i] = sign_U_interact
             hs_m[i] = lamda[:,None]*((-1)**cp.random.randint(2,size=(self.N_time,self.N_s)))
             cl_up_m[i],cl_dn_m[i] = cluster(hs_m[i],Bk_m[i],sign_U_interact_m[i])

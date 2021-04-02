@@ -62,10 +62,10 @@ def init_trotter(Beta,N_time,U_eff,H0):
     gamma2 = cp.array(np.exp( 2*lamda*sign_U_interact)-1)
     return cp.array(sign_U_interact), T_hop, H0_array, cp.array(lamda), probability, gamma1, gamma2
  
- 
 
 
-def init_trotter_proj(Beta, N_time, U_eff, H0, switch_proj, N_electorn, Beta_proj, N_time_proj):
+def init_trotter_proj(Beta, N_time, U_eff, H0, switch_proj, N_electron, Beta_proj, N_time_proj):
+    N_time = N_time//2
     T_hop = np.concatenate((np.ones(N_time) * (Beta / N_time), np.ones(N_time_proj) * (Beta_proj / N_time_proj),
                             np.ones(N_time) * (Beta / N_time)))
 
@@ -74,7 +74,7 @@ def init_trotter_proj(Beta, N_time, U_eff, H0, switch_proj, N_electorn, Beta_pro
 
     T_u = np.ones(N_time + N_time_proj + N_time) * (Beta / N_time)
 
-    H0_array = np.array([H0 for i in range((N_time + N_time_proj + N_time)]))
+    H0_array = np.array([H0 for i in range((N_time + N_time_proj + N_time))])
 
     val, vec = np.linalg.eigh(H0)
     val[:] = 1
